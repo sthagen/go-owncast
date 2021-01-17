@@ -53,6 +53,7 @@ type InstanceDetails struct {
 type socialHandle struct {
 	Platform string `yaml:"platform" json:"platform"`
 	URL      string `yaml:"url" json:"url"`
+	Icon     string `yaml:"icon" json:"icon"`
 }
 
 type videoSettings struct {
@@ -211,11 +212,13 @@ func (c *config) GetFFMpegPath() string {
 	cmd := exec.Command("which", "ffmpeg")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Debugln("Unable to determine path to ffmpeg. Please specify it in the config file.")
+		log.Fatalln("Unable to determine path to ffmpeg. Please specify it in the config file.")
 	}
 
 	path := strings.TrimSpace(string(out))
-
+	if err := verifyFFMpegPath(path); err != nil {
+		log.Warnln(err)
+	}
 	return path
 }
 

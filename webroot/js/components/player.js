@@ -3,10 +3,9 @@
 import videojs from '/js/web_modules/videojs/core.js';
 import '/js/web_modules/@videojs/http-streaming/dist/videojs-http-streaming.min.js';
 import { getLocalStorage, setLocalStorage } from '../utils/helpers.js';
-import { PLAYER_VOLUME } from '../utils/constants.js';
+import { PLAYER_VOLUME, URL_STREAM } from '../utils/constants.js';
 
 const VIDEO_ID = 'video';
-const URL_STREAM = `/hls/stream.m3u8`;
 
 // Video setup
 const VIDEO_SRC = {
@@ -57,13 +56,15 @@ class OwncastPlayer {
   }
 
   init() {
-    this.vjsPlayer = videojs(VIDEO_ID, VIDEO_OPTIONS);
-
-    this.vjsPlayer.beforeRequest = function (options) {
-      const cachebuster = Math.round(new Date().getTime() / 1000);
-      options.uri = `${options.uri}?cachebust=${cachebuster}`;
+    videojs.Vhs.xhr.beforeRequest = options => {
+      if (options.uri.match('m3u8')) {
+        const cachebuster = Math.round(new Date().getTime() / 1000);
+        options.uri = `${options.uri}?cachebust=${cachebuster}`;
+      }
       return options;
     };
+
+    this.vjsPlayer = videojs(VIDEO_ID, VIDEO_OPTIONS);
 
     this.addAirplay();
     this.vjsPlayer.ready(this.handleReady);

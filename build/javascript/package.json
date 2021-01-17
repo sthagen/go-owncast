@@ -6,17 +6,17 @@
   "dependencies": {
     "@joeattardi/emoji-button": "^4.6.0",
     "@justinribeiro/lite-youtube": "^0.9.1",
-    "@videojs/http-streaming": "2.4.1",
+    "@videojs/http-streaming": "2.4.2",
     "@videojs/themes": "^1.0.1",
     "htm": "^3.0.4",
     "mark.js": "^8.11.1",
-    "preact": "^10.5.7",
+    "preact": "^10.5.10",
     "tailwindcss": "^1.9.6",
     "video.js": "7.10.2"
   },
   "devDependencies": {
     "cssnano": "^4.1.10",
-    "postcss": "^8.2.1",
+    "postcss": "^8.2.4",
     "postcss-cli": "^8.3.1"
   },
   "snowpack": {
@@ -38,7 +38,7 @@
   },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "build": "npm install && npx snowpack install && cp node_modules/video.js/dist/video-js.min.css web_modules/videojs && cp -R web_modules ../../webroot/js"
+    "build": "npm install && npx snowpack@2.18.4 install && cp node_modules/video.js/dist/video-js.min.css web_modules/videojs && cp -R web_modules ../../webroot/js"
   },
   "author": "Owncast",
   "license": "ISC"

@@ -14,6 +14,7 @@ import (
 	"github.com/owncast/owncast/utils"
 
 	"github.com/teris-io/shortid"
+	"golang.org/x/time/rate"
 )
 
 const channelBufSize = 100
@@ -30,18 +31,21 @@ type Client struct {
 
 	socketID              string // How we identify a single websocket client.
 	ws                    *websocket.Conn
-	ch                    chan models.ChatMessage
+	ch                    chan models.ChatEvent
 	pingch                chan models.PingMessage
 	usernameChangeChannel chan models.NameChangeEvent
 
 	doneCh chan bool
+
+	rateLimiter *rate.Limiter
 }
 
 const (
-	CHAT       = "CHAT"
-	NAMECHANGE = "NAME_CHANGE"
-	PING       = "PING"
-	PONG       = "PONG"
+	CHAT             = "CHAT"
+	NAMECHANGE       = "NAME_CHANGE"
+	PING             = "PING"
+	PONG             = "PONG"
+	VISIBILITYUPDATE = "VISIBILITY-UPDATE"
 )
 
 // NewClient creates a new chat client.
@@ -50,7 +54,7 @@ func NewClient(ws *websocket.Conn) *Client {
 		log.Panicln("ws cannot be nil")
 	}
 
-	ch := make(chan models.ChatMessage, channelBufSize)
+	ch := make(chan models.ChatEvent, channelBufSize)
 	doneCh := make(chan bool)
 	pingch := make(chan models.PingMessage)
 	usernameChangeChannel := make(chan models.NameChangeEvent)
@@ -60,15 +64,12 @@ func NewClient(ws *websocket.Conn) *Client {
 	socketID, _ := shortid.Generate()
 	clientID := socketID
 
-	return &Client{time.Now(), 0, userAgent, ipAddress, nil, clientID, nil, socketID, ws, ch, pingch, usernameChangeChannel, doneCh}
+	rateLimiter := rate.NewLimiter(0.6, 5)
+
+	return &Client{time.Now(), 0, userAgent, ipAddress, nil, clientID, nil, socketID, ws, ch, pingch, usernameChangeChannel, doneCh, rateLimiter}
 }
 
-// GetConnection gets the connection for the client.
-func (c *Client) GetConnection() *websocket.Conn {
-	return c.ws
-}
-
-func (c *Client) Write(msg models.ChatMessage) {
+func (c *Client) write(msg models.ChatEvent) {
 	select {
 	case c.ch <- msg:
 	default:
@@ -77,13 +78,8 @@ func (c *Client) Write(msg models.ChatMessage) {
 	}
 }
 
-// Done marks the client as done.
-func (c *Client) Done() {
-	c.doneCh <- true
-}
-
 // Listen Write and Read request via channel.
-func (c *Client) Listen() {
+func (c *Client) listen() {
 	go c.listenWrite()
 	c.listenRead()
 }
@@ -123,6 +119,15 @@ func (c *Client) handleClientSocketError(err error) {
 	_server.removeClient(c)
 }
 
+func (c *Client) passesRateLimit() bool {
+	if !c.rateLimiter.Allow() {
+		log.Warnln("Client", c.ClientID, "has exceeded the messaging rate limiting thresholds.")
+		return false
+	}
+
+	return true
+}
+
 // Listen read request via channel.
 func (c *Client) listenRead() {
 	for {
@@ -154,6 +159,10 @@ func (c *Client) listenRead() {
 
 			messageType := messageTypeCheck["type"]
 
+			if !c.passesRateLimit() {
+				continue
+			}
+
 			if messageType == CHAT {
 				c.chatMessageReceived(data)
 			} else if messageType == NAMECHANGE {
@@ -176,7 +185,7 @@ func (c *Client) userChangedName(data []byte) {
 }
 
 func (c *Client) chatMessageReceived(data []byte) {
-	var msg models.ChatMessage
+	var msg models.ChatEvent
 	err := json.Unmarshal(data, &msg)
 	if err != nil {
 		log.Errorln(err)

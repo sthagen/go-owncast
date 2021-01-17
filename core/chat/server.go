@@ -28,7 +28,7 @@ type server struct {
 
 	addCh     chan *Client
 	delCh     chan *Client
-	sendAllCh chan models.ChatMessage
+	sendAllCh chan models.ChatEvent
 	pingCh    chan models.PingMessage
 	doneCh    chan bool
 	errCh     chan error
@@ -45,7 +45,7 @@ func (s *server) remove(c *Client) {
 }
 
 // SendToAll sends a message to all of the connected clients.
-func (s *server) SendToAll(msg models.ChatMessage) {
+func (s *server) SendToAll(msg models.ChatEvent) {
 	s.sendAllCh <- msg
 }
 
@@ -54,9 +54,9 @@ func (s *server) err(err error) {
 	s.errCh <- err
 }
 
-func (s *server) sendAll(msg models.ChatMessage) {
+func (s *server) sendAll(msg models.ChatEvent) {
 	for _, c := range s.Clients {
-		c.Write(msg)
+		c.write(msg)
 	}
 }
 
@@ -85,7 +85,7 @@ func (s *server) onConnection(ws *websocket.Conn) {
 	}()
 
 	s.add(client)
-	client.Listen()
+	client.listen()
 }
 
 // Listen and serve.
@@ -153,7 +153,7 @@ func (s *server) sendWelcomeMessageToClient(c *Client) {
 		time.Sleep(7 * time.Second)
 
 		initialChatMessageText := fmt.Sprintf("Welcome to %s! %s", config.Config.InstanceDetails.Title, config.Config.InstanceDetails.Summary)
-		initialMessage := models.ChatMessage{ClientID: "owncast-server", Author: config.Config.InstanceDetails.Name, Body: initialChatMessageText, ID: "initial-message-1", MessageType: "SYSTEM", Visible: true, Timestamp: time.Now()}
-		c.Write(initialMessage)
+		initialMessage := models.ChatEvent{ClientID: "owncast-server", Author: config.Config.InstanceDetails.Name, Body: initialChatMessageText, ID: "initial-message-1", MessageType: "SYSTEM", Visible: true, Timestamp: time.Now()}
+		c.write(initialMessage)
 	}()
 }
