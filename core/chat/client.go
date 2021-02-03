@@ -115,13 +115,13 @@ func (c *Client) listenWrite() {
 }
 
 func (c *Client) handleClientSocketError(err error) {
-	log.Errorln("Websocket client error: ", err.Error())
+	log.Warnln("Websocket client error: ", err.Error())
 	_server.removeClient(c)
 }
 
 func (c *Client) passesRateLimit() bool {
 	if !c.rateLimiter.Allow() {
-		log.Warnln("Client", c.ClientID, "has exceeded the messaging rate limiting thresholds.")
+		log.Debugln("Client", c.ClientID, "has exceeded the messaging rate limiting thresholds.")
 		return false
 	}
 
