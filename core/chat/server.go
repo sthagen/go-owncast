@@ -77,10 +77,11 @@ func (s *server) usernameChanged(msg models.NameChangeEvent) {
 }
 
 func (s *server) userJoined(msg models.UserJoinedEvent) {
-	for _, c := range s.Clients {
-		c.userJoinedChannel <- msg
+	if s.listener.IsStreamConnected() {
+		for _, c := range s.Clients {
+			c.userJoinedChannel <- msg
+		}
 	}
-
 	go webhooks.SendChatEventUserJoined(msg)
 }
 
@@ -136,7 +137,9 @@ func (s *server) Listen() {
 
 				// Store in the message history
 				msg.SetDefaults()
-				addMessage(msg)
+				if !msg.Ephemeral {
+					addMessage(msg)
+				}
 
 				// Send webhooks
 				go webhooks.SendChatEvent(msg)

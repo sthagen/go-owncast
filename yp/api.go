@@ -35,16 +35,13 @@ func GetYPResponse(w http.ResponseWriter, r *http.Request) {
 
 	status := getStatus()
 
-	streamTitle := ""
-	if status.Online {
-		streamTitle = data.GetStreamTitle()
-	}
+	streamTitle := data.GetStreamTitle()
 
 	response := ypDetailsResponse{
 		Name:                  data.GetServerName(),
 		Description:           data.GetServerSummary(),
 		StreamTitle:           streamTitle,
-		Logo:                  data.GetLogoPath(),
+		Logo:                  "/logo",
 		NSFW:                  data.GetNSFW(),
 		Tags:                  data.GetServerMetadataTags(),
 		Online:                status.Online,

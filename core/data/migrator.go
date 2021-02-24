@@ -118,9 +118,11 @@ func migrateConfigFile() {
 	// Migrate logo
 	if logo := oldConfig.InstanceDetails.Logo; logo != "" {
 		filename := filepath.Base(logo)
+		oldPath := filepath.Join("webroot", logo)
 		newPath := filepath.Join("data", filename)
-		err := utils.Copy(filepath.Join("webroot", logo), newPath)
-		log.Traceln("Copying logo from", logo, "to", newPath)
+
+		log.Infoln("Copying logo from", oldPath, "to", newPath)
+		err := utils.Copy(oldPath, newPath)
 		if err != nil {
 			log.Errorln("Error moving logo", logo, err)
 		} else {
@@ -133,7 +135,7 @@ func migrateConfigFile() {
 	for _, variant := range oldConfig.VideoSettings.StreamQualities {
 		migratedVariant := models.StreamOutputVariant{}
 		migratedVariant.IsAudioPassthrough = true
-		migratedVariant.IsVideoPassthrough = variant.IsVideoPassthrough
+		migratedVariant.IsVideoPassthrough = variant.IsVideoPassthrough || variant.VideoBitrate == 0
 		migratedVariant.Framerate = variant.Framerate
 		migratedVariant.VideoBitrate = variant.VideoBitrate
 		migratedVariant.ScaledHeight = variant.ScaledHeight
@@ -226,7 +228,7 @@ type videoSettings struct {
 // yp allows registration to the central Owncast yp (Yellow pages) service operating as a directory.
 type yp struct {
 	Enabled     bool   `yaml:"enabled"`
-	InstanceURL string `yaml:"instanceUrl"` // The public URL the directory should link to
+	InstanceURL string `yaml:"instanceURL"` // The public URL the directory should link to
 }
 
 // streamQuality defines the specifics of a single HLS stream variant.
