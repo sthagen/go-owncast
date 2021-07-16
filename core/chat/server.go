@@ -135,19 +135,18 @@ func (s *server) Listen() {
 		case c := <-s.delCh:
 			s.removeClient(c)
 		case msg := <-s.sendAllCh:
-			// message was received from a client and should be sanitized, validated
-			// and distributed to other clients.
-			//
-			// Will turn markdown into html, sanitize user-supplied raw html
-			// and standardize this message into something safe we can send everyone else.
-			msg.RenderAndSanitizeMessageBody()
+			if data.GetChatDisabled() {
+				break
+			}
 
 			if !msg.Empty() {
+				// set defaults before sending msg to anywhere
+				msg.SetDefaults()
+
 				s.listener.MessageSent(msg)
 				s.sendAll(msg)
 
 				// Store in the message history
-				msg.SetDefaults()
 				if !msg.Ephemeral {
 					addMessage(msg)
 				}
@@ -183,8 +182,10 @@ func (s *server) sendWelcomeMessageToClient(c *Client) {
 		// Add an artificial delay so people notice this message come in.
 		time.Sleep(7 * time.Second)
 
-		initialChatMessageText := fmt.Sprintf("Welcome to %s! %s", data.GetServerName(), data.GetServerSummary())
-		initialMessage := models.ChatEvent{ClientID: "owncast-server", Author: data.GetServerName(), Body: initialChatMessageText, ID: "initial-message-1", MessageType: "SYSTEM", Visible: true, Timestamp: time.Now()}
-		c.write(initialMessage)
+		welcomeMessage := data.GetServerWelcomeMessage()
+		if welcomeMessage != "" {
+			initialMessage := models.ChatEvent{ClientID: "owncast-server", Author: data.GetServerName(), Body: welcomeMessage, ID: "initial-message-1", MessageType: "SYSTEM", Visible: true, Timestamp: time.Now()}
+			c.write(initialMessage)
+		}
 	}()
 }

@@ -1,11 +1,15 @@
 package admin
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/ioutil"
+	"net"
 	"net/http"
 	"path/filepath"
 	"reflect"
+	"strings"
 
 	"github.com/owncast/owncast/controllers"
 	"github.com/owncast/owncast/core"
@@ -31,7 +35,7 @@ func SetTags(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var tagStrings []string
+	tagStrings := make([]string, 0)
 	for _, tag := range configValues {
 		tagStrings = append(tagStrings, tag.Value.(string))
 	}
@@ -75,6 +79,8 @@ func sendSystemChatAction(messageText string, ephemeral bool) {
 	message.Ephemeral = ephemeral
 	message.SetDefaults()
 
+	message.RenderBody()
+
 	if err := core.SendMessageToChat(message); err != nil {
 		log.Errorln(err)
 	}
@@ -111,6 +117,25 @@ func SetServerSummary(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := data.SetServerSummary(configValue.Value.(string)); err != nil {
+		controllers.WriteSimpleResponse(w, false, err.Error())
+		return
+	}
+
+	controllers.WriteSimpleResponse(w, true, "changed")
+}
+
+// SetServerWelcomeMessage will handle the web config request to set the welcome message text.
+func SetServerWelcomeMessage(w http.ResponseWriter, r *http.Request) {
+	if !requirePOST(w, r) {
+		return
+	}
+
+	configValue, success := getValueFromRequest(w, r)
+	if !success {
+		return
+	}
+
+	if err := data.SetServerWelcomeMessage(strings.TrimSpace(configValue.Value.(string))); err != nil {
 		controllers.WriteSimpleResponse(w, false, err.Error())
 		return
 	}
@@ -156,8 +181,8 @@ func SetStreamKey(w http.ResponseWriter, r *http.Request) {
 	controllers.WriteSimpleResponse(w, true, "changed")
 }
 
-// SetLogoPath will handle the web config request to validate and set the logo path.
-func SetLogoPath(w http.ResponseWriter, r *http.Request) {
+// SetLogo will handle a new logo image file being uploaded.
+func SetLogo(w http.ResponseWriter, r *http.Request) {
 	if !requirePOST(w, r) {
 		return
 	}
@@ -167,14 +192,46 @@ func SetLogoPath(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	imgPath := configValue.Value.(string)
-	fullPath := filepath.Join("data", imgPath)
-	if !utils.DoesFileExists(fullPath) {
-		controllers.WriteSimpleResponse(w, false, fmt.Sprintf("%s does not exist", fullPath))
+	s := strings.SplitN(configValue.Value.(string), ",", 2)
+	if len(s) < 2 {
+		controllers.WriteSimpleResponse(w, false, "Error splitting base64 image data.")
+		return
+	}
+	bytes, err := base64.StdEncoding.DecodeString(s[1])
+	if err != nil {
+		controllers.WriteSimpleResponse(w, false, err.Error())
 		return
 	}
 
-	if err := data.SetLogoPath(imgPath); err != nil {
+	splitHeader := strings.Split(s[0], ":")
+	if len(splitHeader) < 2 {
+		controllers.WriteSimpleResponse(w, false, "Error splitting base64 image header.")
+		return
+	}
+	contentType := strings.Split(splitHeader[1], ";")[0]
+	extension := ""
+	if contentType == "image/svg+xml" {
+		extension = ".svg"
+	} else if contentType == "image/gif" {
+		extension = ".gif"
+	} else if contentType == "image/png" {
+		extension = ".png"
+	} else if contentType == "image/jpeg" {
+		extension = ".jpeg"
+	}
+
+	if extension == "" {
+		controllers.WriteSimpleResponse(w, false, "Missing or invalid contentType in base64 image.")
+		return
+	}
+
+	imgPath := filepath.Join("data", "logo"+extension)
+	if err := ioutil.WriteFile(imgPath, bytes, 0600); err != nil {
+		controllers.WriteSimpleResponse(w, false, err.Error())
+		return
+	}
+
+	if err := data.SetLogoPath("logo" + extension); err != nil {
 		controllers.WriteSimpleResponse(w, false, err.Error())
 		return
 	}
@@ -237,12 +294,48 @@ func SetWebServerPort(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := data.SetHTTPPortNumber(configValue.Value.(float64)); err != nil {
-		controllers.WriteSimpleResponse(w, false, err.Error())
+	if port, ok := configValue.Value.(float64); ok {
+		if (port < 1) || (port > 65535) {
+			controllers.WriteSimpleResponse(w, false, "Port number must be between 1 and 65535")
+			return
+		}
+		if err := data.SetHTTPPortNumber(port); err != nil {
+			controllers.WriteSimpleResponse(w, false, err.Error())
+			return
+		} else {
+			controllers.WriteSimpleResponse(w, true, "HTTP port set")
+			return
+		}
+	}
+	controllers.WriteSimpleResponse(w, false, "Invalid type or value, port must be a number")
+}
+
+// SetWebServerIP will handle the web config request to set the server's HTTP listen address.
+func SetWebServerIP(w http.ResponseWriter, r *http.Request) {
+	if !requirePOST(w, r) {
 		return
 	}
 
-	controllers.WriteSimpleResponse(w, true, "http port set")
+	configValue, success := getValueFromRequest(w, r)
+	if !success {
+		return
+	}
+
+	if input, ok := configValue.Value.(string); ok {
+		if ip := net.ParseIP(input); ip != nil {
+			if err := data.SetHTTPListenAddress(ip.String()); err != nil {
+				controllers.WriteSimpleResponse(w, false, err.Error())
+				return
+			} else {
+				controllers.WriteSimpleResponse(w, true, "HTTP listen address set")
+				return
+			}
+		} else {
+			controllers.WriteSimpleResponse(w, false, "Invalid IP address")
+			return
+		}
+	}
+	controllers.WriteSimpleResponse(w, false, "Invalid type or value, IP address must be a string")
 }
 
 // SetRTMPServerPort will handle the web config request to set the inbound RTMP port.
@@ -341,7 +434,6 @@ func SetS3Configuration(w http.ResponseWriter, r *http.Request) {
 		if newS3Config.Value.Endpoint == "" || !utils.IsValidUrl((newS3Config.Value.Endpoint)) {
 			controllers.WriteSimpleResponse(w, false, "s3 support requires an endpoint")
 			return
-
 		}
 
 		if newS3Config.Value.AccessKey == "" || newS3Config.Value.Secret == "" {
@@ -362,7 +454,6 @@ func SetS3Configuration(w http.ResponseWriter, r *http.Request) {
 
 	data.SetS3Config(newS3Config.Value)
 	controllers.WriteSimpleResponse(w, true, "storage configuration changed")
-
 }
 
 // SetStreamOutputVariants will handle the web config request to set the video output stream variants.
@@ -380,26 +471,6 @@ func SetStreamOutputVariants(w http.ResponseWriter, r *http.Request) {
 	if err := decoder.Decode(&videoVariants); err != nil {
 		controllers.WriteSimpleResponse(w, false, "unable to update video config with provided values "+err.Error())
 		return
-	}
-
-	// Temporary: Convert the cpuUsageLevel to a preset.  In the future we will have
-	// different codec models that will handle this for us and we won't
-	// be keeping track of presets at all.  But for now...
-	presetMapping := []string{
-		"ultrafast",
-		"superfast",
-		"veryfast",
-		"faster",
-		"fast",
-	}
-
-	for i, variant := range videoVariants.Value {
-		preset := "superfast"
-		if variant.CPUUsageLevel > 0 && variant.CPUUsageLevel <= len(presetMapping) {
-			preset = presetMapping[variant.CPUUsageLevel-1]
-		}
-		variant.EncoderPreset = preset
-		videoVariants.Value[i] = variant
 	}
 
 	if err := data.SetStreamOutputVariants(videoVariants.Value); err != nil {
@@ -433,6 +504,89 @@ func SetSocialHandles(w http.ResponseWriter, r *http.Request) {
 	}
 
 	controllers.WriteSimpleResponse(w, true, "social handles updated")
+}
+
+// SetChatDisabled will disable chat functionality.
+func SetChatDisabled(w http.ResponseWriter, r *http.Request) {
+	if !requirePOST(w, r) {
+		return
+	}
+
+	configValue, success := getValueFromRequest(w, r)
+	if !success {
+		controllers.WriteSimpleResponse(w, false, "unable to update chat disabled")
+		return
+	}
+
+	data.SetChatDisabled(configValue.Value.(bool))
+
+	controllers.WriteSimpleResponse(w, true, "chat disabled status updated")
+}
+
+// SetVideoCodec will change the codec used for video encoding.
+func SetVideoCodec(w http.ResponseWriter, r *http.Request) {
+	if !requirePOST(w, r) {
+		return
+	}
+
+	configValue, success := getValueFromRequest(w, r)
+	if !success {
+		controllers.WriteSimpleResponse(w, false, "unable to change video codec")
+		return
+	}
+
+	if err := data.SetVideoCodec(configValue.Value.(string)); err != nil {
+		controllers.WriteSimpleResponse(w, false, "unable to update codec")
+		return
+	}
+
+	controllers.WriteSimpleResponse(w, true, "video codec updated")
+}
+
+// SetExternalActions will set the 3rd party actions for the web interface.
+func SetExternalActions(w http.ResponseWriter, r *http.Request) {
+	type externalActionsRequest struct {
+		Value []models.ExternalAction `json:"value"`
+	}
+
+	decoder := json.NewDecoder(r.Body)
+	var actions externalActionsRequest
+	if err := decoder.Decode(&actions); err != nil {
+		controllers.WriteSimpleResponse(w, false, "unable to update external actions with provided values")
+		return
+	}
+
+	if err := data.SetExternalActions(actions.Value); err != nil {
+		controllers.WriteSimpleResponse(w, false, "unable to update external actions with provided values")
+	}
+
+	controllers.WriteSimpleResponse(w, true, "external actions update")
+}
+
+// SetCustomStyles will set the CSS string we insert into the page.
+func SetCustomStyles(w http.ResponseWriter, r *http.Request) {
+	customStyles, success := getValueFromRequest(w, r)
+	if !success {
+		controllers.WriteSimpleResponse(w, false, "unable to update custom styles")
+		return
+	}
+
+	data.SetCustomStyles(customStyles.Value.(string))
+
+	controllers.WriteSimpleResponse(w, true, "custom styles updated")
+}
+
+// SetUsernameBlocklist will set the list of usernames we do not allow to use.
+func SetUsernameBlocklist(w http.ResponseWriter, r *http.Request) {
+	usernames, success := getValueFromRequest(w, r)
+	if !success {
+		controllers.WriteSimpleResponse(w, false, "unable to update chat username blocklist")
+		return
+	}
+
+	data.SetUsernameBlocklist(usernames.Value.(string))
+
+	controllers.WriteSimpleResponse(w, true, "blocklist updated")
 }
 
 func requirePOST(w http.ResponseWriter, r *http.Request) bool {

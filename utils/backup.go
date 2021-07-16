@@ -10,6 +10,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/schollz/sqlite3dump"
@@ -21,18 +22,18 @@ func Restore(backupFile string, databaseFile string) error {
 
 	data, err := ioutil.ReadFile(backupFile)
 	if err != nil {
-		return errors.New(fmt.Sprintf("Unable to read backup file %s", err))
+		return fmt.Errorf("Unable to read backup file %s", err)
 	}
 
 	gz, err := gzip.NewReader(bytes.NewBuffer(data))
 	if err != nil {
-		return errors.New(fmt.Sprintf("Unable to read backup file %s", err))
+		return fmt.Errorf("Unable to read backup file %s", err)
 	}
 	defer gz.Close()
 
 	var b bytes.Buffer
 	if _, err := io.Copy(&b, gz); err != nil {
-		return errors.New(fmt.Sprintf("Unable to read backup file %s", err))
+		return fmt.Errorf("Unable to read backup file %s", err)
 	}
 
 	defer gz.Close()
@@ -48,8 +49,7 @@ func Restore(backupFile string, databaseFile string) error {
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec(rawSql)
-	if err != nil {
+	if _, err := db.Exec(rawSql); err != nil {
 		return err
 	}
 
@@ -58,6 +58,15 @@ func Restore(backupFile string, databaseFile string) error {
 
 func Backup(db *sql.DB, backupFile string) {
 	log.Traceln("Backing up database to", backupFile)
+
+	BackupDirectory := filepath.Dir(backupFile)
+
+	if !DoesFileExists(BackupDirectory) {
+		err := os.MkdirAll(BackupDirectory, 0700)
+		if err != nil {
+			log.Fatalln(err)
+		}
+	}
 
 	// Dump the entire database as plain text sql
 	var b bytes.Buffer

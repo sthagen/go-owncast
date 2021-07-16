@@ -6,8 +6,13 @@ package logging
 import (
 	"math"
 	"os"
+	"path/filepath"
 	"sync"
+	"time"
 
+	rotatelogs "github.com/lestrrat-go/file-rotatelogs"
+	"github.com/owncast/owncast/utils"
+	"github.com/rifflock/lfshook"
 	"github.com/sirupsen/logrus"
 	logger "github.com/sirupsen/logrus"
 )
@@ -23,11 +28,54 @@ type OCLogger struct {
 var Logger *OCLogger
 
 // Setup configures our custom logging destinations.
-func Setup() {
-	logger.SetOutput(os.Stdout) // Send all logs to console
+func Setup(enableDebugOptions bool, enableVerboseLogging bool) {
+	// Create the logging directory if needed
+	loggingDirectory := filepath.Dir(getLogFilePath())
+	if !utils.DoesFileExists(loggingDirectory) {
+		if err := os.Mkdir(loggingDirectory, 0700); err != nil {
+			logger.Errorln("unable to create logs directory", loggingDirectory, err)
+		}
+	}
 
+	// Write logs to a file
+	path := getLogFilePath()
+	writer, _ := rotatelogs.New(
+		path+".%Y%m%d%H%M",
+		rotatelogs.WithLinkName(path),
+		rotatelogs.WithMaxAge(time.Duration(86400)*time.Second),
+		rotatelogs.WithRotationTime(time.Duration(604800)*time.Second),
+	)
+
+	logMapping := lfshook.WriterMap{
+		logrus.InfoLevel:  writer,
+		logrus.DebugLevel: writer,
+		logrus.TraceLevel: writer,
+		logrus.WarnLevel:  writer,
+		logrus.ErrorLevel: writer,
+		logrus.FatalLevel: writer,
+	}
+
+	logger.AddHook(lfshook.NewHook(
+		logMapping,
+		&logger.TextFormatter{},
+	))
+
+	if enableVerboseLogging {
+		logrus.SetLevel(logrus.TraceLevel)
+	} else {
+		logrus.SetLevel(logrus.InfoLevel)
+	}
+
+	// Write to stdout console
+	logger.SetOutput(os.Stdout)
+
+	// Write to our custom logging hook for the log API
 	_logger := new(OCLogger)
 	logger.AddHook(_logger)
+
+	if enableDebugOptions {
+		logrus.SetReportCaller(true)
+	}
 
 	Logger = _logger
 }

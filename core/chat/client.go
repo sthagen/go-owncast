@@ -92,24 +92,20 @@ func (c *Client) listenWrite() {
 		select {
 		// Send a PING keepalive
 		case msg := <-c.pingch:
-			err := websocket.JSON.Send(c.ws, msg)
-			if err != nil {
+			if err := websocket.JSON.Send(c.ws, msg); err != nil {
 				c.handleClientSocketError(err)
 			}
 		// send message to the client
 		case msg := <-c.ch:
-			err := websocket.JSON.Send(c.ws, msg)
-			if err != nil {
+			if err := websocket.JSON.Send(c.ws, msg); err != nil {
 				c.handleClientSocketError(err)
 			}
 		case msg := <-c.usernameChangeChannel:
-			err := websocket.JSON.Send(c.ws, msg)
-			if err != nil {
+			if err := websocket.JSON.Send(c.ws, msg); err != nil {
 				c.handleClientSocketError(err)
 			}
 		case msg := <-c.userJoinedChannel:
-			err := websocket.JSON.Send(c.ws, msg)
-			if err != nil {
+			if err := websocket.JSON.Send(c.ws, msg); err != nil {
 				c.handleClientSocketError(err)
 			}
 
@@ -123,7 +119,6 @@ func (c *Client) listenWrite() {
 }
 
 func (c *Client) handleClientSocketError(err error) {
-	log.Warnln("Websocket client error: ", err.Error())
 	_server.removeClient(c)
 }
 
@@ -149,8 +144,7 @@ func (c *Client) listenRead() {
 		// read data from websocket connection
 		default:
 			var data []byte
-			err := websocket.Message.Receive(c.ws, &data)
-			if err != nil {
+			if err := websocket.Message.Receive(c.ws, &data); err != nil {
 				if err == io.EOF {
 					c.doneCh <- true
 					return
@@ -158,13 +152,21 @@ func (c *Client) listenRead() {
 				c.handleClientSocketError(err)
 			}
 
-			var messageTypeCheck map[string]interface{}
-			err = json.Unmarshal(data, &messageTypeCheck)
-			if err != nil {
-				log.Errorln(err)
+			if !c.passesRateLimit() {
+				continue
 			}
 
-			if !c.passesRateLimit() {
+			var messageTypeCheck map[string]interface{}
+
+			// Bad messages should be thrown away
+			if err := json.Unmarshal(data, &messageTypeCheck); err != nil {
+				log.Debugln("Badly formatted message received from", c.Username, c.ws.Request().RemoteAddr)
+				continue
+			}
+
+			// If we can't tell the type of message, also throw it away.
+			if messageTypeCheck == nil {
+				log.Debugln("Untyped message received from", c.Username, c.ws.Request().RemoteAddr)
 				continue
 			}
 
@@ -199,8 +201,7 @@ func (c *Client) userJoined(data []byte) {
 
 func (c *Client) userChangedName(data []byte) {
 	var msg models.NameChangeEvent
-	err := json.Unmarshal(data, &msg)
-	if err != nil {
+	if err := json.Unmarshal(data, &msg); err != nil {
 		log.Errorln(err)
 	}
 	msg.Type = models.UserNameChanged
@@ -211,8 +212,7 @@ func (c *Client) userChangedName(data []byte) {
 
 func (c *Client) chatMessageReceived(data []byte) {
 	var msg models.ChatEvent
-	err := json.Unmarshal(data, &msg)
-	if err != nil {
+	if err := json.Unmarshal(data, &msg); err != nil {
 		log.Errorln(err)
 	}
 
@@ -222,6 +222,8 @@ func (c *Client) chatMessageReceived(data []byte) {
 	c.Username = &msg.Author
 
 	msg.ClientID = c.ClientID
+	msg.RenderAndSanitizeMessageBody()
+
 	_server.SendToAll(msg)
 }
 

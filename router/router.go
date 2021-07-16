@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"net"
 	"net/http"
 
 	log "github.com/sirupsen/logrus"
@@ -31,8 +32,7 @@ func Start() error {
 
 	// websocket chat server
 	go func() {
-		err := chat.Start()
-		if err != nil {
+		if err := chat.Start(); err != nil {
 			log.Fatalln(err)
 		}
 	}()
@@ -57,6 +57,12 @@ func Start() error {
 
 	// return the logo
 	http.HandleFunc("/logo", controllers.GetLogo)
+
+	// return the list of video variants available
+	http.HandleFunc("/api/video/variants", controllers.GetVideoStreamOutputVariants)
+
+	// tell the backend you're an active viewer
+	http.HandleFunc("/api/ping", controllers.Ping)
 
 	// Authenticated admin requests
 
@@ -106,6 +112,18 @@ func Start() error {
 	// Server summary
 	http.HandleFunc("/api/admin/config/serversummary", middleware.RequireAdminAuth(admin.SetServerSummary))
 
+	// Server welcome message
+	http.HandleFunc("/api/admin/config/welcomemessage", middleware.RequireAdminAuth(admin.SetServerWelcomeMessage))
+
+	// Disable chat
+	http.HandleFunc("/api/admin/config/chat/disable", middleware.RequireAdminAuth(admin.SetChatDisabled))
+
+	// Set chat usernames that are not allowed
+	http.HandleFunc("/api/admin/config/chat/disallowedusernames", middleware.RequireAdminAuth(admin.SetUsernameBlocklist))
+
+	// Set video codec
+	http.HandleFunc("/api/admin/config/video/codec", middleware.RequireAdminAuth(admin.SetVideoCodec))
+
 	// Return all webhooks
 	http.HandleFunc("/api/admin/webhooks", middleware.RequireAdminAuth(admin.GetWebhooks))
 
@@ -144,8 +162,9 @@ func Start() error {
 
 	// Connected clients
 	http.HandleFunc("/api/integrations/clients", middleware.RequireAccessToken(models.ScopeHasAdminAccess, controllers.GetConnectedClients))
+
 	// Logo path
-	http.HandleFunc("/api/admin/config/logo", middleware.RequireAdminAuth(admin.SetLogoPath))
+	http.HandleFunc("/api/admin/config/logo", middleware.RequireAdminAuth(admin.SetLogo))
 
 	// Server tags
 	http.HandleFunc("/api/admin/config/tags", middleware.RequireAdminAuth(admin.SetTags))
@@ -155,6 +174,9 @@ func Start() error {
 
 	// Server http port
 	http.HandleFunc("/api/admin/config/webserverport", middleware.RequireAdminAuth(admin.SetWebServerPort))
+
+	// Server http listen address
+	http.HandleFunc("/api/admin/config/webserverip", middleware.RequireAdminAuth(admin.SetWebServerIP))
 
 	// Server rtmp port
 	http.HandleFunc("/api/admin/config/rtmpserverport", middleware.RequireAdminAuth(admin.SetRTMPServerPort))
@@ -183,10 +205,21 @@ func Start() error {
 	// reset the YP registration
 	http.HandleFunc("/api/admin/yp/reset", middleware.RequireAdminAuth(admin.ResetYPRegistration))
 
-	port := config.WebServerPort
+	// set external action links
+	http.HandleFunc("/api/admin/config/externalactions", middleware.RequireAdminAuth(admin.SetExternalActions))
 
-	log.Infof("Web server is listening on port %d.", port)
+	// set custom style css
+	http.HandleFunc("/api/admin/config/customstyles", middleware.RequireAdminAuth(admin.SetCustomStyles))
+
+	port := config.WebServerPort
+	ip := config.WebServerIP
+
+	ip_addr := net.ParseIP(ip)
+	if ip_addr == nil {
+		log.Fatalln("Invalid IP address", ip)
+	}
+	log.Infof("Web server is listening on IP %s port %d.", ip_addr.String(), port)
 	log.Infoln("The web admin interface is available at /admin.")
 
-	return http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
+	return http.ListenAndServe(fmt.Sprintf("%s:%d", ip_addr.String(), port), nil)
 }

@@ -2,12 +2,14 @@ package data
 
 import (
 	"errors"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/owncast/owncast/config"
 	"github.com/owncast/owncast/models"
+	"github.com/owncast/owncast/utils"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -16,9 +18,11 @@ const streamTitleKey = "stream_title"
 const streamKeyKey = "stream_key"
 const logoPathKey = "logo_path"
 const serverSummaryKey = "server_summary"
+const serverWelcomeMessageKey = "server_welcome_message"
 const serverNameKey = "server_name"
 const serverURLKey = "server_url"
 const httpPortNumberKey = "http_port_number"
+const httpListenAddressKey = "http_listen_address"
 const rtmpPortNumberKey = "rtmp_port_number"
 const serverMetadataTagsKey = "server_metadata_tags"
 const directoryEnabledKey = "directory_enabled"
@@ -33,12 +37,17 @@ const s3StorageEnabledKey = "s3_storage_enabled"
 const s3StorageConfigKey = "s3_storage_config"
 const videoLatencyLevel = "video_latency_level"
 const videoStreamOutputVariantsKey = "video_stream_output_variants"
+const chatDisabledKey = "chat_disabled"
+const externalActionsKey = "external_actions"
+const customStylesKey = "custom_styles"
+const videoCodecKey = "video_codec"
+const blockedUsernamesKey = "blocked_usernames"
 
 // GetExtraPageBodyContent will return the user-supplied body content.
 func GetExtraPageBodyContent() string {
 	content, err := _datastore.GetString(extraContentKey)
 	if err != nil {
-		log.Errorln(extraContentKey, err)
+		log.Traceln(extraContentKey, err)
 		return config.GetDefaults().PageBodyContent
 	}
 
@@ -69,8 +78,8 @@ func SetStreamTitle(title string) error {
 func GetStreamKey() string {
 	key, err := _datastore.GetString(streamKeyKey)
 	if err != nil {
-		log.Errorln(streamKeyKey, err)
-		return ""
+		log.Traceln(streamKeyKey, err)
+		return config.GetDefaults().StreamKey
 	}
 
 	return key
@@ -85,7 +94,7 @@ func SetStreamKey(key string) error {
 func GetLogoPath() string {
 	logo, err := _datastore.GetString(logoPathKey)
 	if err != nil {
-		log.Errorln(logoPathKey, err)
+		log.Traceln(logoPathKey, err)
 		return config.GetDefaults().Logo
 	}
 
@@ -105,7 +114,7 @@ func SetLogoPath(logo string) error {
 func GetServerSummary() string {
 	summary, err := _datastore.GetString(serverSummaryKey)
 	if err != nil {
-		log.Errorln(serverSummaryKey, err)
+		log.Traceln(serverSummaryKey, err)
 		return ""
 	}
 
@@ -117,12 +126,28 @@ func SetServerSummary(summary string) error {
 	return _datastore.SetString(serverSummaryKey, summary)
 }
 
+// GetServerWelcomeMessage will return the server welcome message text.
+func GetServerWelcomeMessage() string {
+	welcomeMessage, err := _datastore.GetString(serverWelcomeMessageKey)
+	if err != nil {
+		log.Traceln(serverWelcomeMessageKey, err)
+		return config.GetDefaults().ServerWelcomeMessage
+	}
+
+	return welcomeMessage
+}
+
+// SetServerWelcomeMessage will set the server welcome message text.
+func SetServerWelcomeMessage(welcomeMessage string) error {
+	return _datastore.SetString(serverWelcomeMessageKey, welcomeMessage)
+}
+
 // GetServerName will return the server name text.
 func GetServerName() string {
 	name, err := _datastore.GetString(serverNameKey)
 	if err != nil {
-		log.Errorln(serverNameKey, err)
-		return ""
+		log.Traceln(serverNameKey, err)
+		return config.GetDefaults().Name
 	}
 
 	return name
@@ -152,7 +177,7 @@ func SetServerURL(url string) error {
 func GetHTTPPortNumber() int {
 	port, err := _datastore.GetNumber(httpPortNumberKey)
 	if err != nil {
-		log.Errorln(httpPortNumberKey, err)
+		log.Traceln(httpPortNumberKey, err)
 		return config.GetDefaults().WebServerPort
 	}
 
@@ -167,11 +192,26 @@ func SetHTTPPortNumber(port float64) error {
 	return _datastore.SetNumber(httpPortNumberKey, port)
 }
 
+// GetHTTPListenAddress will return the HTTP listen address.
+func GetHTTPListenAddress() string {
+	address, err := _datastore.GetString(httpListenAddressKey)
+	if err != nil {
+		log.Traceln(httpListenAddressKey, err)
+		return config.GetDefaults().WebServerIP
+	}
+	return address
+}
+
+// SetHTTPListenAddress will set the server HTTP listen address.
+func SetHTTPListenAddress(address string) error {
+	return _datastore.SetString(httpListenAddressKey, address)
+}
+
 // GetRTMPPortNumber will return the server RTMP port.
 func GetRTMPPortNumber() int {
 	port, err := _datastore.GetNumber(rtmpPortNumberKey)
 	if err != nil {
-		log.Errorln(rtmpPortNumberKey, err)
+		log.Traceln(rtmpPortNumberKey, err)
 		return config.GetDefaults().RTMPServerPort
 	}
 
@@ -190,8 +230,12 @@ func SetRTMPPortNumber(port float64) error {
 // GetServerMetadataTags will return the metadata tags.
 func GetServerMetadataTags() []string {
 	tagsString, err := _datastore.GetString(serverMetadataTagsKey)
+	if tagsString == "" {
+		return []string{}
+	}
+
 	if err != nil {
-		log.Errorln(serverMetadataTagsKey, err)
+		log.Traceln(serverMetadataTagsKey, err)
 		return []string{}
 	}
 
@@ -236,12 +280,12 @@ func GetSocialHandles() []models.SocialHandle {
 
 	configEntry, err := _datastore.Get(socialHandlesKey)
 	if err != nil {
-		log.Errorln(socialHandlesKey, err)
+		log.Traceln(socialHandlesKey, err)
 		return socialHandles
 	}
 
 	if err := configEntry.getObject(&socialHandles); err != nil {
-		log.Errorln(err)
+		log.Traceln(err)
 		return socialHandles
 	}
 
@@ -283,15 +327,21 @@ func SetPeakOverallViewerCount(count int) error {
 }
 
 // GetLastDisconnectTime will return the time the last stream ended.
-func GetLastDisconnectTime() (time.Time, error) {
-	var disconnectTime time.Time
+func GetLastDisconnectTime() (utils.NullTime, error) {
+	invalidTime := utils.NullTime{Time: time.Now(), Valid: false}
+	var disconnectTime utils.NullTime
+
 	configEntry, err := _datastore.Get(lastDisconnectTimeKey)
 	if err != nil {
-		return disconnectTime, err
+		return invalidTime, err
 	}
 
-	if err := configEntry.getObject(disconnectTime); err != nil {
-		return disconnectTime, err
+	if err := configEntry.getObject(&disconnectTime); err != nil {
+		return invalidTime, err
+	}
+
+	if !disconnectTime.Valid {
+		return invalidTime, err
 	}
 
 	return disconnectTime, nil
@@ -299,7 +349,8 @@ func GetLastDisconnectTime() (time.Time, error) {
 
 // SetLastDisconnectTime will set the time the last stream ended.
 func SetLastDisconnectTime(disconnectTime time.Time) error {
-	var configEntry = ConfigEntry{Key: lastDisconnectTimeKey, Value: disconnectTime}
+	savedDisconnectTime := utils.NullTime{Time: disconnectTime, Valid: true}
+	var configEntry = ConfigEntry{Key: lastDisconnectTimeKey, Value: savedDisconnectTime}
 	return _datastore.Save(configEntry)
 }
 
@@ -356,7 +407,7 @@ func SetS3Config(config models.S3) error {
 func GetS3StorageEnabled() bool {
 	enabled, err := _datastore.GetBool(s3StorageEnabledKey)
 	if err != nil {
-		log.Errorln(err)
+		log.Traceln(err)
 		return false
 	}
 
@@ -371,8 +422,10 @@ func SetS3StorageEnabled(enabled bool) error {
 // GetStreamLatencyLevel will return the stream latency level.
 func GetStreamLatencyLevel() models.LatencyLevel {
 	level, err := _datastore.GetNumber(videoLatencyLevel)
-	if err != nil || level == 0 {
-		level = 4
+	if err != nil {
+		level = 2 // default
+	} else if level > 4 {
+		level = 4 // highest
 	}
 
 	return models.GetLatencyLevel(int(level))
@@ -408,10 +461,85 @@ func SetStreamOutputVariants(variants []models.StreamOutputVariant) error {
 	return _datastore.Save(configEntry)
 }
 
+// SetChatDisabled will disable chat if set to true.
+func SetChatDisabled(disabled bool) error {
+	return _datastore.SetBool(chatDisabledKey, disabled)
+}
+
+// GetChatDisabled will return if chat is disabled.
+func GetChatDisabled() bool {
+	disabled, err := _datastore.GetBool(chatDisabledKey)
+	if err == nil {
+		return disabled
+	}
+
+	return false
+}
+
+// GetExternalActions will return the registered external actions.
+func GetExternalActions() []models.ExternalAction {
+	configEntry, err := _datastore.Get(externalActionsKey)
+	if err != nil {
+		return []models.ExternalAction{}
+	}
+
+	var externalActions []models.ExternalAction
+	if err := configEntry.getObject(&externalActions); err != nil {
+		return []models.ExternalAction{}
+	}
+
+	return externalActions
+}
+
+// SetExternalActions will save external actions.
+func SetExternalActions(actions []models.ExternalAction) error {
+	var configEntry = ConfigEntry{Key: externalActionsKey, Value: actions}
+	return _datastore.Save(configEntry)
+}
+
+// SetCustomStyles will save a string with CSS to insert into the page.
+func SetCustomStyles(styles string) error {
+	return _datastore.SetString(customStylesKey, styles)
+}
+
+// GetCustomStyles will return a string with CSS to insert into the page.
+func GetCustomStyles() string {
+	style, err := _datastore.GetString(customStylesKey)
+	if err != nil {
+		return ""
+	}
+
+	return style
+}
+
+// SetVideoCodec will set the codec used for video encoding.
+func SetVideoCodec(codec string) error {
+	return _datastore.SetString(videoCodecKey, codec)
+}
+
+func GetVideoCodec() string {
+	codec, err := _datastore.GetString(videoCodecKey)
+	if codec == "" || err != nil {
+		return "libx264" // Default value
+	}
+
+	return codec
+}
+
 // VerifySettings will perform a sanity check for specific settings values.
 func VerifySettings() error {
 	if GetStreamKey() == "" {
 		return errors.New("no stream key set. Please set one in your config file")
+	}
+
+	logoPath := GetLogoPath()
+	if !utils.DoesFileExists(filepath.Join(config.DataDirectory, logoPath)) {
+		defaultLogo := filepath.Join(config.WebRoot, "img/logo.svg")
+		log.Traceln(logoPath, "not found in the data directory. copying a default logo.")
+		if err := utils.Copy(defaultLogo, filepath.Join(config.DataDirectory, "logo.svg")); err != nil {
+			log.Errorln("error copying default logo: ", err)
+		}
+		SetLogoPath("logo.svg")
 	}
 
 	return nil
@@ -447,4 +575,21 @@ func FindHighestVideoQualityIndex(qualities []models.StreamOutputVariant) int {
 	})
 
 	return indexedQualities[0].index
+}
+
+// GetUsernameBlocklist will return the blocked usernames as a comma separated string.
+func GetUsernameBlocklist() string {
+	usernameString, err := _datastore.GetString(blockedUsernamesKey)
+
+	if err != nil {
+		log.Traceln(blockedUsernamesKey, err)
+		return ""
+	}
+
+	return usernameString
+}
+
+// SetUsernameBlocklist set the username blocklist as a comma separated string.
+func SetUsernameBlocklist(usernames string) error {
+	return _datastore.SetString(blockedUsernamesKey, usernames)
 }

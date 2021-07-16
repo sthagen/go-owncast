@@ -1,8 +1,8 @@
 openapi: 3.0.1
 info:
   title: Owncast
-  description: Owncast is a self-hosted live video and web chat server for use with existing popular broadcasting software.  The following APIs represent the state in the development master branch.
-  version: '0.0.6'
+  description: Owncast is a self-hosted live video and web chat server for use with existing popular broadcasting software.  The following APIs represent the state in the development branch.
+  version: '0.0.7'
   contact:
     name: Gabe Kangas
     email: gabek@real-ity.com
@@ -182,9 +182,9 @@ components:
         framerate:
           type: integer
           description: The target frames per second of the video.
-        encoderPreset:
-          type: string
-          description: "The [H.264 preset value](https://trac.ffmpeg.org/wiki/Encode/H.264) selected for this HLS variant."
+        cpuUsageLevel:
+          type: integer
+          description: "The amount of hardware utilization selected for this HLS variant."
     
     TimestampedValue:
       type: object
@@ -984,13 +984,35 @@ paths:
                 - framerate: 30
                   videoPassthrough: false
                   videoBitrate: 1800
-                  encoderPreset: veryfast
+                  cpuUsageLevel: 2
                   audioPassthrough: true
                 - framerate: 24
                   videoPassthrough: false
                   videoBitrate: 1000
-                  encoderPreset: superfast
-                  audioPassthrough: true                                                               
+                  cpuUsageLevel: 3
+                  audioPassthrough: true
+
+  /api/admin/config/video/codec:
+    post:
+      summary: Set the video codec.
+      description: Sets the specific video codec that will be used for video encoding. Some codecs will support hardware acceleration. Not all codecs will be supported for all systems.
+      tags: ["Admin"]
+      security:
+        - AdminBasicAuth: []
+      responses:
+        '200':
+          $ref: "#/components/responses/BasicResponse"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                value:
+                  description: The video codec to change to.
+                  type: string
+              example:
+                value: libx264
 
   /api/admin/config/s3:
       post:
@@ -1037,6 +1059,21 @@ paths:
                     url: https://github.com/owncast/owncast
                   - platform: mastodon
                     url: https://mastodon.social/@gabek
+  /api/admin/config/customstyles:
+    post:
+      summary: Custom CSS styles to be used in the web front endpoints.
+      description: Save a string containing CSS to be inserted in to the web frontend page.
+      tags: ["Admin"]
+      responses:
+        '200':
+          $ref: "#/components/responses/BasicResponse"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfigValue"
+            example:
+              value: "body { color: orange; background: black; }"
                   
   /api/admin/viewersOverTime:
     get:
@@ -1341,6 +1378,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Webhook"
+
+  /api/admin/config/externalactions:
+    post:
+      summary: Set external action URLs.
+      description: Set a collection of external action URLs that are displayed in the UI.
+      tags: ["Admin", "Integrations"]
+      security:
+        - AdminBasicAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+              schema:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      url:
+                        type: string
+                        description: URL of the external action content.
+                      title:
+                        type: string
+                        description: The title to put on the external action button.
+                      description:
+                        type: string
+                        description: Optional additional description to display in the UI.
+                      icon:
+                        type: string
+                        description: The URL to an image to place on the external action button.
+                      color:
+                        type: string
+                        description: Optional color to use for drawing the action button.
+                      openExternally:
+                        type: boolean
+                        description: If set this action will open in a new browser tab instead of an internal modal.
+      responses:
+        "200":
+          description: Actions have been updated.
 
   /api/admin/webhooks/delete:
     post:

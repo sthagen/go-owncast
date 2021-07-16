@@ -64,6 +64,9 @@ func IndexHandler(w http.ResponseWriter, r *http.Request) {
 	// Set a cache control max-age header
 	middleware.SetCachingHeaders(w, r)
 
+	// Opt-out of Google FLoC
+	middleware.DisableFloc(w)
+
 	http.ServeFile(w, r, path.Join(config.WebRoot, r.URL.Path))
 }
 
@@ -102,6 +105,7 @@ func handleScraperMetadataPage(w http.ResponseWriter, r *http.Request) {
 		Name:          data.GetServerName(),
 		RequestedURL:  fullURL.String(),
 		Image:         imageURL.String(),
+		Summary:       data.GetServerSummary(),
 		Thumbnail:     thumbnailURL,
 		TagsString:    tagsString,
 		Tags:          data.GetServerMetadataTags(),
@@ -109,9 +113,7 @@ func handleScraperMetadataPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "text/html")
-	err = tmpl.Execute(w, metadata)
-
-	if err != nil {
+	if err := tmpl.Execute(w, metadata); err != nil {
 		log.Panicln(err)
 	}
 }

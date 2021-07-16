@@ -1,5 +1,11 @@
 /* some base styles for chat and messaging components */
 
+:root {
+  /* Override this in your custom CSS to change the
+     opacity of the message backgrounds. */
+  --message-background-alpha: 0.3;
+}
+
 #chat-container {
   position: fixed;
   z-index: 9;
@@ -25,7 +31,7 @@
   max-height: 5rem;
 }
 #message-form-actions {
-  right: 2rem;
+  right: 1rem;
   bottom: 1.88rem;
 }
 #emoji-button {
@@ -171,11 +177,6 @@
   width: 100%;
   display: block;
   /* height: 15rem; */
-}
-
-.message-text .youtube-embed {
-  width: 90%;
-  height: auto;
 }
 
 /* MESSAGE TEXT CONTENT */

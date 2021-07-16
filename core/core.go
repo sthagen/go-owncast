@@ -4,7 +4,6 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strconv"
 
 	log "github.com/sirupsen/logrus"
 
@@ -34,8 +33,6 @@ func Start() error {
 	resetDirectories()
 
 	data.PopulateDefaults()
-	// Once a couple versions pass we can remove the old data migrators.
-	data.RunMigrations()
 
 	if err := data.VerifySettings(); err != nil {
 		log.Error(err)
@@ -99,6 +96,7 @@ func transitionToOfflineVideoStreamContent() {
 	offlineFilePath := "static/" + offlineFilename
 	_transcoder := transcoder.NewTranscoder()
 	_transcoder.SetInput(offlineFilePath)
+	_transcoder.SetIdentifier("offline")
 	_transcoder.Start()
 
 	// Copy the logo to be the thumbnail
@@ -116,50 +114,15 @@ func resetDirectories() {
 	log.Trace("Resetting file directories to a clean slate.")
 
 	// Wipe the public, web-accessible hls data directory
-	os.RemoveAll(config.PublicHLSStoragePath)
-	os.RemoveAll(config.PrivateHLSStoragePath)
-	err := os.MkdirAll(config.PublicHLSStoragePath, 0777)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	err = os.MkdirAll(config.PrivateHLSStoragePath, 0777)
-	if err != nil {
-		log.Fatalln(err)
-	}
-
-	// Remove the previous thumbnail
-	os.Remove(filepath.Join(config.WebRoot, "thumbnail.jpg"))
-
-	// Create private hls data dirs
-	if len(data.GetStreamOutputVariants()) != 0 {
-		for index := range data.GetStreamOutputVariants() {
-			err = os.MkdirAll(path.Join(config.PrivateHLSStoragePath, strconv.Itoa(index)), 0777)
-			if err != nil {
-				log.Fatalln(err)
-			}
-
-			err = os.MkdirAll(path.Join(config.PublicHLSStoragePath, strconv.Itoa(index)), 0777)
-			if err != nil {
-				log.Fatalln(err)
-			}
-		}
-	} else {
-		err = os.MkdirAll(path.Join(config.PrivateHLSStoragePath, strconv.Itoa(0)), 0777)
-		if err != nil {
-			log.Fatalln(err)
-		}
-
-		err = os.MkdirAll(path.Join(config.PublicHLSStoragePath, strconv.Itoa(0)), 0777)
-		if err != nil {
-			log.Fatalln(err)
-		}
-	}
+	utils.CleanupDirectory(config.PublicHLSStoragePath)
+	utils.CleanupDirectory(config.PrivateHLSStoragePath)
 
 	// Remove the previous thumbnail
 	logo := data.GetLogoPath()
-	err = utils.Copy(path.Join("data", logo), "webroot/thumbnail.jpg")
-	if err != nil {
-		log.Warnln(err)
+	if utils.DoesFileExists(logo) {
+		err := utils.Copy(path.Join("data", logo), filepath.Join(config.WebRoot, "thumbnail.jpg"))
+		if err != nil {
+			log.Warnln(err)
+		}
 	}
 }

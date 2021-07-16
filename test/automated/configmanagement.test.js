@@ -6,7 +6,7 @@ const streamTitle = randomString();
 const serverSummary = randomString();
 const pageContent = `<p>${randomString()}</p>`;
 const tags = [randomString(), randomString(), randomString()];
-const latencyLevel = Math.floor(Math.random() * 5 + 1);
+const latencyLevel = Math.floor(Math.random() * 4);
 
 const streamOutputVariants = {
   videoBitrate: randomNumber() * 100,
@@ -85,7 +85,7 @@ test('verify updated config values', async (done) => {
   const res = await request.get('/api/config');
   expect(res.body.name).toBe(serverName);
   expect(res.body.streamTitle).toBe(streamTitle);
-  expect(res.body.summary).toBe(serverSummary);
+  expect(res.body.summary).toBe(`<p>${serverSummary}</p>`);
   expect(res.body.extraPageContent).toBe(pageContent);
   expect(res.body.logo).toBe('/logo');
   expect(res.body.socialHandles).toStrictEqual(socialHandles);

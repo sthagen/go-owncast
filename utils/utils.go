@@ -20,20 +20,16 @@ import (
 	"mvdan.cc/xurls"
 )
 
-// GetTemporaryPipePath gets the temporary path for the streampipe.flv file.
-func GetTemporaryPipePath() string {
-	return filepath.Join(os.TempDir(), "streampipe.flv")
-}
-
 // DoesFileExists checks if the file exists.
 func DoesFileExists(name string) bool {
-	if _, err := os.Stat(name); err != nil {
-		if os.IsNotExist(err) {
-			return false
-		}
+	if _, err := os.Stat(name); err == nil {
+		return true
+	} else if os.IsNotExist(err) {
+		return false
+	} else {
+		log.Errorln(err)
+		return false
 	}
-
-	return true
 }
 
 // GetRelativePathFromAbsolutePath gets the relative path from the provided absolute path.
@@ -141,7 +137,7 @@ func RenderPageContentMarkdown(raw string) string {
 		panic(err)
 	}
 
-	return buf.String()
+	return strings.TrimSpace(buf.String())
 }
 
 // GetCacheDurationSecondsForPath will return the number of seconds to cache an item.
@@ -166,8 +162,7 @@ func GetCacheDurationSecondsForPath(filePath string) int {
 }
 
 func IsValidUrl(urlToTest string) bool {
-	_, err := url.ParseRequestURI(urlToTest)
-	if err != nil {
+	if _, err := url.ParseRequestURI(urlToTest); err != nil {
 		return false
 	}
 
@@ -230,4 +225,15 @@ func VerifyFFMpegPath(path string) error {
 	}
 
 	return nil
+}
+
+// Removes the directory and makes it again. Throws fatal error on failure.
+func CleanupDirectory(path string) {
+	log.Traceln("Cleaning", path)
+	if err := os.RemoveAll(path); err != nil {
+		log.Fatalln("Unable to remove directory. Please check the ownership and permissions", err)
+	}
+	if err := os.MkdirAll(path, 0777); err != nil {
+		log.Fatalln("Unable to create directory. Please check the ownership and permissions", err)
+	}
 }

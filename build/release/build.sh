@@ -1,11 +1,11 @@
 #!/bin/sh
 
 # Human readable names of binary distributions
-DISTRO=(macOS-64bit linux-64bit linux-32bit linux-arm7)
+DISTRO=(macOS-64bit linux-64bit linux-32bit linux-arm7 linux-arm64)
 # Operating systems for the respective distributions
-OS=(darwin linux linux linux)
+OS=(darwin linux linux linux linux)
 # Architectures for the respective distributions
-ARCH=(amd64 amd64 386 arm-7)
+ARCH=(amd64 amd64 386 arm-7 arm64)
 
 # Version
 VERSION=$1
@@ -69,11 +69,10 @@ build() {
   cp "${TMPDIR}tailwind.min.css" ./dist/${NAME}/webroot/js/web_modules/tailwindcss/dist/tailwind.min.css
   cp -R static/ dist/${NAME}/static
   cp README.md dist/${NAME}
-  cp webroot/img/logo.svg dist/${NAME}/data/logo.svg
 
   pushd dist/${NAME} >> /dev/null
 
-  CGO_ENABLED=1 ~/go/bin/xgo --branch ${GIT_BRANCH} -ldflags "-s -w -X main.GitCommit=${GIT_COMMIT} -X main.BuildVersion=${VERSION} -X main.BuildPlatform=${NAME}" -targets "${OS}/${ARCH}" github.com/owncast/owncast
+  CGO_ENABLED=1 ~/go/bin/xgo --branch ${GIT_BRANCH} -ldflags "-s -w -X github.com/owncast/owncast/config.GitCommit=${GIT_COMMIT} -X github.com/owncast/owncast/config.BuildVersion=${VERSION} -X github.com/owncast/owncast/config.BuildPlatform=${NAME}" -targets "${OS}/${ARCH}" github.com/owncast/owncast
   mv owncast-*-${ARCH} owncast
 
   zip -r -q -8 ../owncast-$VERSION-$NAME.zip .
@@ -113,8 +112,8 @@ echo "Building Docker image ${DOCKER_IMAGE}..."
 cd $(git rev-parse --show-toplevel)
 
 # Docker build
-docker build --build-arg NAME=docker --build-arg VERSION=${VERSION} --build-arg GIT_COMMIT=$GIT_COMMIT -t gabekangas/owncast:$VERSION -t gabekangas/owncast:latest -t owncast . -f build/release/Dockerfile-build
+docker build --build-arg NAME=docker --build-arg VERSION=${VERSION} --build-arg GIT_COMMIT=$GIT_COMMIT -t gabekangas/owncast:$VERSION -t gabekangas/owncast:latest -t owncast .
 
 # Dockerhub
 # You must be authenticated via `docker login` with your Dockerhub credentials first.
-docker push gabekangas/owncast
+docker push "gabekangas/owncast:${VERSION}"
